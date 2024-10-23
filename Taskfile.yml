@@ -1,0 +1,65 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  GOPROXY: 'https://goproxy.cn,direct'
+  GOSUMDB: sum.golang.google.cn
+  GIT_BRANCH: $(git branch -r --contains | head -1 | sed -E -e "s%(HEAD ->|origin|upstream)/?%%g" | sed 's|/|-|g' | xargs)
+  GIT_COMMIT: $(git rev-parse --short HEAD || echo "abcdefgh")
+  BUILD_DATE: $(date +%Y%m%d%H)
+  BUILD_RELEASE: $(cat version.txt || echo "1.0.0")
+  BIN_DIR: $(pwd)/bin
+  GOOS: $(go env GOOS)
+  GOARCH: $(go env GOARCH)
+tasks:
+
+  gofmt:
+    cmds:
+      - go install golang.org/x/tools/cmd/goimports@latest
+      - gofmt -s -w .
+      - goimports -w .
+
+  govulncheck:
+    desc: vulnerability detection
+    cmds:
+      - go install golang.org/x/vuln/cmd/govulncheck@v1.1.1
+      - govulncheck ./...
+
+  golint:
+    cmds:
+      - go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.57.2
+      - golangci-lint run -v ./...
+
+  devinit:
+    desc: Install git hooks to perform pre-commit checks
+    cmds:
+      - git config core.hooksPath .githooks
+      # - git config commit.template .gitmessage
+
+  gomod:
+    cmds:
+      - go mod tidy
+
+  lint:
+    desc: lint code
+    cmds:
+      - task: gomod
+      - task: gofmt
+      - task: golint
+
+  fmt:
+    desc: format code
+    run: once
+    cmds:
+      - task: gencopyright
+      - task: lint
+
+  build:
+    desc: build binary
+    cmds:
+      - CGO_ENABLED=1 GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build -o "{{.BIN_DIR}}/envtpl" ./cmd/main.go
+
+  default:
+    cmds:
+      - task: build
